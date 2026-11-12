@@ -2,7 +2,7 @@
   "name": "git-graph-plus-custom",
   "displayName": "Git Graph Plus (Custom)",
   "description": "Personal fork of Git Graph Plus with a bottom-panel graph and click-to-open diffs",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "publisher": "tony11306",
   "repository": {
     "type": "git",

@@ -1,13 +1,19 @@
 # Changelog
 
-## Unreleased (fork)
+## 0.7.4-custom.1 (fork, 2026-11-12)
+
+### New Features
+- **Revert Multiple Commits** - Right-click a multi-commit selection and choose **Revert N commits**. Commits are reverted newest first (one revert commit each, or staged together with "Apply changes without committing"), so a series of edits to the same lines undoes cleanly. Non-contiguous selections revert only the selected commits.
+
+## 0.7.3-custom.1 (fork, 2026-11-12)
+
+Based on upstream 0.7.3.
 
 ### New Features
 - **Graph in the Bottom Panel** - Git Graph+ now opens as a tab in the bottom panel, next to Terminal and Problems. The new `gitGraphPlus.location` setting (`panel` / `editor`) switches back to the editor tab; reload the window after changing it.
 - **Side-by-Side Layout** - Commit details sit to the right of the graph instead of below it, so the view stays usable in a short panel. Drag the divider to resize (20–70% of the width).
 - **Click to Open Diffs** - A single click on a changed file opens its diff in VS Code's diff editor, reusing the preview tab and keeping focus in the graph so you can click through files.
 - **Combined Changes for Two Commits** - Selecting two commits now shows their combined changes, the same as selecting three or more, instead of the diff between the two.
-- **Revert Multiple Commits** - Right-click a multi-commit selection and choose **Revert N commits**. Commits are reverted newest first (one revert commit each, or staged together with "Apply changes without committing"), so a series of edits to the same lines undoes cleanly.
 
 ### Removed
 - **Inline Diff Pane** - The Changes tab now shows only the file tree; the inline/side-by-side diff pane is gone. This also removes per-hunk and selected-line reverse, copy-lines, image swipe/onion-skin comparison, and the large-diff render cap. Reverse File (right-click a file) is still available.

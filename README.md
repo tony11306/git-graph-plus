@@ -16,8 +16,9 @@
 > - Commit details sit to the right of the graph instead of below it
 > - Clicking a changed file opens its diff in VS Code's diff editor; the inline diff pane was removed
 > - Selecting two commits shows their combined changes, like selecting three or more
+> - Revert several selected commits at once (right-click a multi-selection)
 >
-> See the *Unreleased* section of [CHANGELOG.md](CHANGELOG.md) for details.
+> See the `-custom` entries in [CHANGELOG.md](CHANGELOG.md) for details.
 
 A modern, full-featured Git GUI for VS Code. Visualize your commit history, manage branches, and perform advanced git operations - all without leaving your editor.
 

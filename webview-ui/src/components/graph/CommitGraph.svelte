@@ -22,6 +22,7 @@
   import CheckoutCommitModal from '../modals/CheckoutCommitModal.svelte';
   import SquashModal from '../modals/SquashModal.svelte';
   import MultiCherryPickModal from '../modals/MultiCherryPickModal.svelte';
+  import MultiRevertModal from '../modals/MultiRevertModal.svelte';
   import { modalStore } from '../../lib/stores/modals.svelte';
   import type { Commit, CommitGraphData } from '../../lib/types';
   import { tooltip } from '../../lib/actions/tooltip';
@@ -237,6 +238,8 @@
   let squashChain = $state<Commit[] | null>(null);
   // Multi cherry-pick: the selected hashes (oldest→newest) when the modal is open.
   let multiCherryPickTargets = $state<string[] | null>(null);
+  // Multi revert: the selected hashes (newest→oldest) when the modal is open.
+  let multiRevertTargets = $state<string[] | null>(null);
 
   // Interactive-rebase-from-selection state.
   // rebaseTargetBranches: candidates for the branch+dirty modal (branch pick needed).
@@ -279,7 +282,7 @@
     modalStore.anyOpen
     || showResetModal || showRebaseModal || showCherryPickModal || showRevertModal || !!autosquashTarget
     || showCheckoutCommitModal || showFastForwardModal || showPullAfterCheckoutModal || showWorktreeBlockedModal
-    || !!squashChain || !!multiCherryPickTargets || !!interactiveRebaseBase
+    || !!squashChain || !!multiCherryPickTargets || !!multiRevertTargets || !!interactiveRebaseBase
     || !!rebaseTargetBranches || !!rebaseDirtyBranch,
   );
   $effect(() => {
@@ -828,6 +831,11 @@
       multiItems.push({
         label: t('graph.cherryPickCommits', { count: String(sel.length) }),
         action: () => { multiCherryPickTargets = orderedOldestFirst; },
+      });
+      multiItems.push({
+        label: t('graph.revertCommits', { count: String(orderedOldestFirst.length) }),
+        // Revert newest first so each revert applies cleanly on top of the last.
+        action: () => { multiRevertTargets = [...orderedOldestFirst].reverse(); },
       });
       multiItems.push({ separator: true, label: '', action: () => {} });
       multiItems.push({
@@ -1853,6 +1861,22 @@
       contextMenuHash = null;
       uiStore.exitMultiSelect();
       vscode.postMessage({ type: 'cherryPick', payload: { commit: commits[0], commits, noCommit, pushAfter } });
+    }}
+  />
+{/if}
+
+{#if multiRevertTargets}
+  <MultiRevertModal
+    commits={multiRevertTargets}
+    branch={branchStore.currentBranch?.name ?? 'current branch'}
+    onClose={() => { multiRevertTargets = null; contextMenuHash = null; }}
+    onRevert={({ noCommit, pushAfter }) => {
+      // Snapshot the $state proxy into a plain array before posting (DataCloneError otherwise).
+      const commits = [...multiRevertTargets!];
+      multiRevertTargets = null;
+      contextMenuHash = null;
+      uiStore.exitMultiSelect();
+      vscode.postMessage({ type: 'revert', payload: { commit: commits[0], commits, noCommit, pushAfter } });
     }}
   />
 {/if}

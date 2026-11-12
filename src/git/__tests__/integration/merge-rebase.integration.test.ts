@@ -193,6 +193,19 @@ describe('GitService integration — merge / rebase / cherry-pick / revert', () 
       expect(subject).toMatch(/Revert/i);
     });
 
+    it('reverts multiple commits newest-first, one revert commit each', async () => {
+      commit(repo.path, 'init', { 'a.txt': 'one\n' });
+      const c2 = commit(repo.path, 'second', { 'a.txt': 'two\n' });
+      const c3 = commit(repo.path, 'third', { 'a.txt': 'three\n' });
+
+      // Newest first: undoing c3 then c2 never conflicts on the same line.
+      await svc.revert([c3, c2]);
+
+      expect(readFileSync(join(repo.path, 'a.txt'), 'utf-8')).toBe('one\n');
+      const subjects = runGit(repo.path, ['log', '-2', '--format=%s']).trim().split('\n');
+      expect(subjects).toEqual(['Revert "second"', 'Revert "third"']);
+    });
+
     it('with noCommit stages the inverse without committing', async () => {
       commit(repo.path, 'init', { 'a.txt': 'one\n' });
       const target = commit(repo.path, 'second', { 'a.txt': 'two\n' });

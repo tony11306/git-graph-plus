@@ -27,6 +27,7 @@ const H = vi.hoisted(() => {
     checkout: vi.fn(async () => {}),
     pull: vi.fn(async () => {}),
     clean: vi.fn(async () => {}),
+    revert: vi.fn(async () => {}),
     setWarningHandler: vi.fn(),
     setAuthRetryHandler: vi.fn(),
     setExtraEnv: vi.fn(),
@@ -473,5 +474,18 @@ describe('MainPanel orchestration logic', () => {
       M.savedRemoteFilter = prevRemote;
       M.savedBranchFilter = prevBranch;
     }
+  });
+});
+
+describe('MainPanel revert', () => {
+  it('reverts a single commit from `commit`', async () => {
+    await dispatch({ type: 'revert', payload: { commit: 'aaaaaaa1' } });
+    expect(H.git.revert).toHaveBeenCalledWith(['aaaaaaa1'], { noCommit: undefined });
+    expect(postedOfType('operationComplete')[0].payload).toMatchObject({ operation: 'revert', success: true });
+  });
+
+  it('reverts every commit in `commits`, in the given (newest-first) order', async () => {
+    await dispatch({ type: 'revert', payload: { commit: 'ccccccc3', commits: ['ccccccc3', 'bbbbbbb2'], noCommit: true } });
+    expect(H.git.revert).toHaveBeenCalledWith(['ccccccc3', 'bbbbbbb2'], { noCommit: true });
   });
 });

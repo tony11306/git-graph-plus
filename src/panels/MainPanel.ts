@@ -1171,7 +1171,10 @@ export class MainPanel {
           break;
         }
         case 'revert': {
-          await this.gitService.revert(message.payload.commit, { noCommit: message.payload.noCommit });
+          // `commits` (newest→oldest) carries a multi-commit selection; fall back
+          // to the single `commit` for the original single-commit flow.
+          const reverts = message.payload.commits ?? [message.payload.commit];
+          await this.gitService.revert(reverts, { noCommit: message.payload.noCommit });
           // Optional follow-up push (only meaningful when a commit was created).
           // A revert adds a new commit, so the push needs no force.
           let revertPushFailed = false;
@@ -1184,10 +1187,13 @@ export class MainPanel {
             }
           }
           this.post({ type: 'operationComplete', payload: { operation: 'revert', success: true } });
+          const revertLabel = reverts.length > 1
+            ? vscode.l10n.t('nCommits', String(reverts.length))
+            : reverts[0].substring(0, 7);
           if (message.payload.pushAfter && !message.payload.noCommit && !revertPushFailed) {
-            vscode.window.showInformationMessage(vscode.l10n.t('revertedAndPushed', message.payload.commit.substring(0, 7)));
+            vscode.window.showInformationMessage(vscode.l10n.t('revertedAndPushed', revertLabel));
           } else {
-            vscode.window.showInformationMessage(vscode.l10n.t('reverted', message.payload.commit.substring(0, 7)));
+            vscode.window.showInformationMessage(vscode.l10n.t('reverted', revertLabel));
           }
           await this.refreshAll();
           break;

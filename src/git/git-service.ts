@@ -1889,13 +1889,19 @@ export class GitService {
     await this.exec(args);
   }
 
-  async revert(hash: string, options?: { noCommit?: boolean }): Promise<void> {
-    this.assertSafeRef(hash, 'revert');
+  async revert(hashes: string | string[], options?: { noCommit?: boolean }): Promise<void> {
+    const list = Array.isArray(hashes) ? hashes : [hashes];
+    for (const hash of list) {
+      this.assertSafeRef(hash, 'revert');
+    }
     const args = ['revert'];
     if (options?.noCommit) {
       args.push('--no-commit');
     }
-    args.push(hash);
+    // git reverts the listed commits in order. Callers pass them newest→oldest so
+    // later changes are undone first and each revert applies to the state it
+    // was made on top of.
+    args.push(...list);
     await this.exec(args);
   }
 

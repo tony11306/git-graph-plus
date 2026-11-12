@@ -844,7 +844,7 @@ export class MainPanel {
         }
         case 'openExtensionSettings': {
           // Opens VS Code Settings pre-filtered to this extension's settings.
-          await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:the0807.git-graph-plus');
+          await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:tony11306.git-graph-plus-custom');
           break;
         }
         case 'amendCommit': {

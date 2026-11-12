@@ -4,7 +4,7 @@
   import { getVsCodeApi } from './lib/vscode-api';
   import { commitStore } from './lib/stores/commits.svelte';
   import { branchStore } from './lib/stores/branches.svelte';
-  import { uiStore, BOTTOM_PANEL_DEFAULT_RATIO, BOTTOM_PANEL_MIN_RATIO, BOTTOM_PANEL_MAX_RATIO } from './lib/stores/ui.svelte';
+  import { uiStore, DETAILS_PANEL_DEFAULT_RATIO, DETAILS_PANEL_MIN_RATIO, DETAILS_PANEL_MAX_RATIO } from './lib/stores/ui.svelte';
   import { i18n, t } from './lib/i18n/index.svelte';
   import CommitGraph from './components/graph/CommitGraph.svelte';
   import BottomPanel from './components/layout/BottomPanel.svelte';
@@ -83,7 +83,7 @@ import AmendModal from './components/modals/AmendModal.svelte';
   });
 
   onMount(() => {
-    uiStore.bottomPanelHeight = Math.round(window.innerHeight * BOTTOM_PANEL_DEFAULT_RATIO);
+    uiStore.detailsPanelWidth = Math.round(window.innerWidth * DETAILS_PANEL_DEFAULT_RATIO);
 
     function handleMessage(event: MessageEvent) {
       const msg = event.data;
@@ -340,12 +340,13 @@ import AmendModal from './components/modals/AmendModal.svelte';
   function startResize(e: MouseEvent) {
     e.preventDefault();
     resizing = true;
-    const startY = e.clientY;
-    const startHeight = uiStore.bottomPanelHeight;
+    const startX = e.clientX;
+    const startWidth = uiStore.detailsPanelWidth;
 
     function onMouseMove(e: MouseEvent) {
-      const delta = startY - e.clientY;
-      uiStore.bottomPanelHeight = Math.max(window.innerHeight * BOTTOM_PANEL_MIN_RATIO, Math.min(window.innerHeight * BOTTOM_PANEL_MAX_RATIO, startHeight + delta));
+      // Dragging left widens the details panel on the right.
+      const delta = startX - e.clientX;
+      uiStore.detailsPanelWidth = Math.max(window.innerWidth * DETAILS_PANEL_MIN_RATIO, Math.min(window.innerWidth * DETAILS_PANEL_MAX_RATIO, startWidth + delta));
     }
 
     function onMouseUp() {
@@ -482,26 +483,30 @@ import AmendModal from './components/modals/AmendModal.svelte';
           }}
         />
       {/if}
-      {#if !uiStore.commitDetailFullscreen}
-        <div class="graph-area">
-          <CommitGraph {searchMatchedHashes} {searchNavigateHash} headJumpNonce={headJumpNonce} onHeadOffscreenChange={(v) => headOffscreen = v} bisectActive={bisectMessage !== null} bisectCulpritHash={bisectMessage?.includes('is the first bad commit') ? bisectMessage.match(/^([a-f0-9]{7,40})/)?.[1] ?? null : null} {remoteFilter} />
-        </div>
-      {/if}
-      {#if uiStore.showBottomPanel && (uiStore.selectedCommitHash || uiStore.comparing)}
+      <!-- Graph on the left, commit details on the right (Rider-style), so the
+           view stays usable in a short bottom panel. -->
+      <div class="graph-split">
         {#if !uiStore.commitDetailFullscreen}
-          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div
-            class="resize-handle-h"
-            role="separator"
-            onmousedown={startResize}
-          >
-            <div class="resize-handle-line"></div>
+          <div class="graph-area">
+            <CommitGraph {searchMatchedHashes} {searchNavigateHash} headJumpNonce={headJumpNonce} onHeadOffscreenChange={(v) => headOffscreen = v} bisectActive={bisectMessage !== null} bisectCulpritHash={bisectMessage?.includes('is the first bad commit') ? bisectMessage.match(/^([a-f0-9]{7,40})/)?.[1] ?? null : null} {remoteFilter} />
           </div>
         {/if}
-        <div class="bottom-area" class:fullscreen={uiStore.commitDetailFullscreen} style={uiStore.commitDetailFullscreen ? '' : `height: ${uiStore.bottomPanelHeight}px;`}>
-          <BottomPanel />
-        </div>
-      {/if}
+        {#if uiStore.showBottomPanel && (uiStore.selectedCommitHash || uiStore.comparing)}
+          {#if !uiStore.commitDetailFullscreen}
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+            <div
+              class="resize-handle-v"
+              role="separator"
+              onmousedown={startResize}
+            >
+              <div class="resize-handle-line"></div>
+            </div>
+          {/if}
+          <div class="details-area" class:fullscreen={uiStore.commitDetailFullscreen} style={uiStore.commitDetailFullscreen ? '' : `width: ${uiStore.detailsPanelWidth}px;`}>
+            <BottomPanel />
+          </div>
+        {/if}
+      </div>
     {:else if uiStore.viewMode === 'log'}
       <div class="log-container">
         <Reflog active={uiStore.viewMode === 'log'} />
@@ -826,7 +831,7 @@ import AmendModal from './components/modals/AmendModal.svelte';
   }
 
   .app-container.resizing {
-    cursor: ns-resize;
+    cursor: ew-resize;
     user-select: none;
   }
 
@@ -1057,8 +1062,17 @@ import AmendModal from './components/modals/AmendModal.svelte';
     overflow: hidden;
   }
 
+  .graph-split {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .graph-area {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     overflow: hidden;
   }
@@ -1069,9 +1083,9 @@ import AmendModal from './components/modals/AmendModal.svelte';
     overflow: hidden;
   }
 
-  .resize-handle-h {
-    height: 12px;
-    cursor: ns-resize;
+  .resize-handle-v {
+    width: 8px;
+    cursor: ew-resize;
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -1080,16 +1094,16 @@ import AmendModal from './components/modals/AmendModal.svelte';
   }
 
   .resize-handle-line {
-    width: 80px;
-    height: 4px;
+    width: 4px;
+    height: 80px;
     border-radius: 2px;
     background: var(--border-color);
-    transition: background 0.15s, width 0.15s;
+    transition: background 0.15s, height 0.15s;
   }
 
-  .resize-handle-h:hover .resize-handle-line {
+  .resize-handle-v:hover .resize-handle-line {
     background: var(--vscode-focusBorder, #007fd4);
-    width: 120px;
+    height: 120px;
   }
 
   /* ---- Light theme overrides ---- */
@@ -1116,21 +1130,20 @@ import AmendModal from './components/modals/AmendModal.svelte';
     background: rgba(46, 125, 50, 0.12);
   }
 
-  .bottom-area {
+  .details-area {
     overflow: hidden;
     flex-shrink: 0;
-    /* bottomPanelHeight is a fixed px value that isn't recomputed when the
-       viewport shrinks (e.g. opening the terminal). Cap the panel to the
-       available area so it can never overflow .content-area and get clipped;
-       BottomPanel then scrolls internally instead of becoming unreachable. */
-    max-height: 80%;
-    border-top: 1px solid var(--border-color);
+    /* detailsPanelWidth is a fixed px value that isn't recomputed when the
+       viewport shrinks. Cap the panel so it can never push the graph off
+       screen; BottomPanel then scrolls internally. */
+    max-width: 80%;
+    border-left: 1px solid var(--border-color);
   }
 
-  .bottom-area.fullscreen {
+  .details-area.fullscreen {
     flex: 1;
-    max-height: none;
-    border-top: none;
+    max-width: none;
+    border-left: none;
   }
 
   :global(.vsg-tooltip) {

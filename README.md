@@ -10,6 +10,15 @@
 
 [한국어](README.ko.md)
 
+> [!Note]
+> **This is a modified fork of [the0807/git-graph-plus](https://github.com/the0807/git-graph-plus).** Changes from upstream:
+> - The graph opens as a tab in the bottom panel, next to Terminal and Problems (`gitGraphPlus.location`)
+> - Commit details sit to the right of the graph instead of below it
+> - Clicking a changed file opens its diff in VS Code's diff editor; the inline diff pane was removed
+> - Selecting two commits shows their combined changes, like selecting three or more
+>
+> See the *Unreleased* section of [CHANGELOG.md](CHANGELOG.md) for details.
+
 A modern, full-featured Git GUI for VS Code. Visualize your commit history, manage branches, and perform advanced git operations - all without leaving your editor.
 
 > Staging, committing, and inline blame use VS Code's built-in Source Control. Git Graph+ focuses on everything else.
@@ -26,7 +35,8 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 - **Interactive Rebase** - Drag-to-reorder commits with per-commit action control (pick, squash, fixup, drop, etc.)
 - **Fixup & Squash Workflow** - Create `fixup!`/`squash!` commits from the graph, then fold them in with the interactive-rebase autosquash toggle
 - **Conflict Prediction & Resolution** - Preview conflicting files before you run a merge/rebase, then resolve in the VS Code 3-way merge editor
-- **Built-in Diff Viewer** - Shiki-powered syntax highlighting with image diff (side-by-side, swipe, onion-skin)
+- **Lives in the Bottom Panel** - The graph sits next to Terminal and Problems, with commit details beside it
+- **Diffs in the Editor** - Click a changed file to open it in VS Code's native diff editor
 - **Markdown Commit Messages** - Commit descriptions render as formatted Markdown in the details panel, with a Markdown/Plain toggle
 - **Advanced Git Tooling** - Git Flow, Bisect, LFS with file locks, Submodules, Statistics, and Reflog with dangling-commit recovery
 
@@ -41,10 +51,10 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | **Graph Visualization** | Interactive commit graph with color-coded branch rails and merge lines                                                |
 | **Commit Ordering**     | Topological ordering like Fork for clear branch history                                                               |
 | **Three Views**         | **Graph** for visual history, **Reflog** for git reference log history, **Statistics** for analytics                  |
-| **Commit Details**      | Click any commit to view metadata, changed files, and full diffs in a resizable bottom panel                          |
+| **Commit Details**      | Click any commit to view its metadata and changed files in a resizable panel to the right of the graph                |
 | **Markdown Messages**   | Commit messages containing Markdown render formatted in the details panel, with a Markdown/Plain toggle               |
 | **Commit Links**        | Issue, PR, and merge-request references in commit messages become clickable links - GitHub/GitLab auto-detected from `origin`, plus custom regex rules |
-| **Commit Comparison**   | Select a base commit, then click another to compare - select multiple commits to toggle a combined changes panel, or compare any commit to your working tree |
+| **Commit Comparison**   | Select two or more commits to see their combined changes, or compare any commit to your working tree |
 | **Search**              | Find commits by message, author, date range, hash, or changed file - with result highlighting and keyboard navigation |
 | **Jump to HEAD**        | A button beside the search box scrolls to the current HEAD commit (emphasized when off-screen); search also matches the `HEAD` keyword |
 | **Keyboard Navigation** | Move the graph selection with arrow keys; Ctrl/Cmd jumps to the first parent or newest child, remembering the path back |
@@ -104,19 +114,16 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | **Resolve & Stage**    | Per-file "Mark as Resolved" with automatic staging              |
 | **Continue / Abort**   | One-click buttons to continue or abort the operation            |
 
-### Diff Viewer
-
-![Diff Viewer](resources/diff.png)
+### Changed Files
 
 | Feature                 | Description                                                                              |
 | ----------------------- | ---------------------------------------------------------------------------------------- |
 | **File Tree**           | Hierarchical file browser with status badges (Added, Modified, Deleted, Renamed, Copied) |
-| **Syntax Highlighting** | Powered by Shiki - accurate, editor-quality syntax colors                                |
-| **Image Diff**          | Side-by-side visual preview with swipe comparison for image changes                      |
+| **Diff in Editor**      | Click a file to open its diff in VS Code's diff editor (reusing the preview tab, so you can click through files) |
 | **Patch Export**        | Save any commit as a `.patch` file                                                       |
-| **Open in Editor**      | Right-click any file in the diff viewer to open it or view its changes in VS Code        |
+| **Open File**           | Right-click a file to open it in the editor                                              |
 | **File Path Actions**   | Right-click a file to reveal it in the OS file explorer, copy its absolute path, or copy its repo-relative path |
-| **Reverse Changes**     | Undo a whole file, a single hunk, or gutter-selected lines of a commit against your working tree — and copy selected lines — right from the diff |
+| **Reverse File**        | Right-click a file to undo a commit's changes to it against your working tree            |
 
 ### Stash & Worktree
 
@@ -167,7 +174,7 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 
 1. Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=the0807.git-graph-plus)
 2. Open a folder containing a Git repository
-3. Open Git Graph+ using any of:
+3. Open Git Graph+ (it appears as a **Git Graph+** tab in the bottom panel) using any of:
    - **Command Palette** - `Git Graph+: Open`
    - **Activity Bar** - Click the Git Graph+ icon
    - **SCM title bar**, **Status bar**, or **Editor title bar** - Click the git-merge icon
@@ -183,6 +190,7 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 
 | Setting                                | Default       | Description                                              |
 | -------------------------------------- | ------------- | -------------------------------------------------------- |
+| `gitGraphPlus.location`                | `panel`       | Where the graph opens (`panel` bottom panel tab, `editor` editor tab); reload the window after changing |
 | `gitGraphPlus.autoRefresh`             | `true`        | Auto-refresh on repository changes                       |
 | `gitGraphPlus.timeout`                 | `60`          | Max time (seconds) to wait for a Git command before abort |
 | `gitGraphPlus.initialCommitCount`      | `200`         | Commits loaded on first render / refresh (lower = faster in huge repos) |

@@ -1,8 +1,10 @@
 import type { InteractiveRebaseMode } from '../types';
 
-export const BOTTOM_PANEL_DEFAULT_RATIO = 0.35;
-export const BOTTOM_PANEL_MIN_RATIO = 0.2;
-export const BOTTOM_PANEL_MAX_RATIO = 0.7;
+// The commit details panel sits to the right of the graph; these are fractions
+// of the window width.
+export const DETAILS_PANEL_DEFAULT_RATIO = 0.45;
+export const DETAILS_PANEL_MIN_RATIO = 0.2;
+export const DETAILS_PANEL_MAX_RATIO = 0.7;
 
 class UiStore {
   selectedCommitHash = $state<string | null>(null);
@@ -14,7 +16,7 @@ class UiStore {
   compareRef1 = $state<string | null>(null);
   compareRef2 = $state<string | null>(null);
   viewMode = $state<'graph' | 'log' | 'stats'>('graph');
-  bottomPanelHeight = $state(250);
+  detailsPanelWidth = $state(400);
   showBottomPanel = $state(true);
   sidebarWidth = $state(220);
   errorMessage = $state<string | null>(null);

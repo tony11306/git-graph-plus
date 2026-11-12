@@ -177,7 +177,24 @@
         "icon": "$(clear-all)"
       }
     ],
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "gitGraphPlusPanel",
+          "title": "Git Graph+",
+          "icon": "resources/icon-dark.svg"
+        }
+      ]
+    },
     "views": {
+      "gitGraphPlusPanel": [
+        {
+          "type": "webview",
+          "id": "gitGraphPlus.panelGraph",
+          "name": "Git Graph+",
+          "when": "config.gitGraphPlus.location == 'panel'"
+        }
+      ],
       "scm": [
         {
           "id": "gitGraphPlus.branches",
@@ -375,6 +392,19 @@
     "configuration": {
       "title": "Git Graph+",
       "properties": {
+        "gitGraphPlus.location": {
+          "type": "string",
+          "enum": [
+            "panel",
+            "editor"
+          ],
+          "enumDescriptions": [
+            "Show the graph as a tab in the bottom panel, next to Terminal and Problems",
+            "Show the graph as an editor tab"
+          ],
+          "default": "panel",
+          "description": "Where the Git Graph+ view opens. Reload the window after changing this."
+        },
         "gitGraphPlus.autoRefresh": {
           "type": "boolean",
           "default": true,

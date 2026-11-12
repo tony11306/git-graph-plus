@@ -7,8 +7,6 @@
   import { onMount, onDestroy } from 'svelte';
   import { t } from '../../lib/i18n/index.svelte';
   import { avatarStore } from '../../lib/stores/avatars.svelte';
-  import FileDiffView from './FileDiffView.svelte';
-  import type { ReverseTarget } from './FileDiffView.svelte';
   import ContextMenu from '../common/ContextMenu.svelte';
   import CommitHoverCard from '../common/CommitHoverCard.svelte';
   import { tooltip } from '../../lib/actions/tooltip';
@@ -93,54 +91,6 @@
     vscode.postMessage({ type: 'reverseCommitChanges', payload: { commit, file, hunkIndex, lineIndices } });
   }
 
-  // Right-click on a diff line (committed view) → offer to copy any selected
-  // text and to reverse the clicked hunk against the working tree. FileDiffView
-  // hands us the location and the hunk index; we build the menu here since this
-  // component already owns the ContextMenu host.
-  function handleDiffReverse(target: ReverseTarget) {
-    const items: Array<{ label: string; action: () => void; danger?: boolean; separator?: boolean }> = [];
-    if (target.selectionText) {
-      items.push({
-        label: t('file.copySelection'),
-        action: () => { vscode.postMessage({ type: 'copyToClipboard', payload: { text: target.selectionText } }); fileContextMenu = null; },
-      });
-    }
-    // copyLinesText is '' for a lone blank line, so gate on presence (!== undefined).
-    if (target.copyLinesText !== undefined) {
-      const text = target.copyLinesText;
-      const count = target.copyLinesCount ?? 0;
-      items.push({
-        label: `${t('file.copyLines')} (${count})`,
-        action: () => { vscode.postMessage({ type: 'copyToClipboard', payload: { text } }); fileContextMenu = null; },
-      });
-    }
-    // When the user has dragged a line-selection, offer to reverse just those
-    // changed lines (lineIndices) in addition to the whole-hunk action below.
-    if (target.selectedLineIndices?.length) {
-      const lineIndices = target.selectedLineIndices;
-      items.push({
-        label: `${t('file.reverseLines')} (${lineIndices.length})`,
-        danger: true,
-        action: () => { postReverse(target.commitHash, target.file, target.hunkIndex, lineIndices); fileContextMenu = null; },
-      });
-    }
-    items.push({
-      label: t('file.reverseHunk'),
-      danger: true,
-      action: () => { postReverse(target.commitHash, target.file, target.hunkIndex); fileContextMenu = null; },
-    });
-    fileContextMenu = { x: target.x, y: target.y, items };
-  }
-
-  // The per-hunk header "Reverse Hunk" button reverses immediately (no menu).
-  function handleHunkReverse(target: Pick<ReverseTarget, 'commitHash' | 'file' | 'hunkIndex'>) {
-    postReverse(target.commitHash, target.file, target.hunkIndex);
-  }
-
-  // The "Reverse Selected Lines" button reverses just the dragged changed lines.
-  function handleLinesReverse(target: Pick<ReverseTarget, 'commitHash' | 'file' | 'hunkIndex'> & { lineIndices: number[] }) {
-    postReverse(target.commitHash, target.file, target.hunkIndex, target.lineIndices);
-  }
   let previewCommit = $state<Commit | null>(null);
   let previewPos = $state<{ x: number; y: number } | null>(null);
   let hoveredHash = $state<string | null>(null);
@@ -174,32 +124,15 @@
   });
 
   // Reversing against the working tree is offered only for a real commit that
-  // isn't a stash (stashes offer "restore" instead). Gates every reverse callback
-  // passed to FileDiffView and the tree's "Reverse File" action.
+  // isn't a stash (stashes offer "restore" instead). Gates the tree's
+  // "Reverse File" action.
   const canReverseInThisView = $derived(!!commit && stashIndex === null);
 
-  let filesPanelWidth = $state(240);
-  let isResizing = $state(false);
-  let resizeStartX = 0;
-  let resizeStartWidth = 0;
   // svelte-ignore state_referenced_locally
   let activeTab = $state<'commit' | 'changes'>(commit ? 'commit' : 'changes');
   let uncommittedTab = $state<'staged' | 'unstaged'>('staged');
 
   let activeHash = $state('');
-
-  let selectedDiff = $derived(
-    activeHash === 'UNCOMMITTED'
-      ? (selectedFile ? uncommittedDiffCache.get(selectedFile) ?? null : null)
-      : (diffs.find(d => d.file === (selectedFile ?? '')) ?? null)
-  );
-
-  let selectedSections = $derived.by(() => {
-    if (!selectedFile) return [];
-    return sections
-      .filter(s => s.file === selectedFile)
-      .map(s => ({ ...s, shortHash: s.commit.slice(0, 7), subject: commitStore.getCommit(s.commit)?.subject ?? '' }));
-  });
 
   // True when the selected uncommitted entry is a nested git repo that isn't
   // registered as a submodule — git can't diff inside it, so we show a hint
@@ -212,36 +145,21 @@
     return list.some(f => f.path === filePath && f.status === 'N');
   });
 
-  function startResize(e: MouseEvent) {
-    isResizing = true;
-    resizeStartX = e.clientX;
-    resizeStartWidth = filesPanelWidth;
-    document.addEventListener('mousemove', onResizeMove);
-    document.addEventListener('mouseup', stopResize);
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'col-resize';
-  }
-
-  function onResizeMove(e: MouseEvent) {
-    if (!isResizing) return;
-    const delta = e.clientX - resizeStartX;
-    filesPanelWidth = Math.min(480, Math.max(120, resizeStartWidth + delta));
-  }
-
-  function stopResize() {
-    if (!isResizing) return;
-    isResizing = false;
-    document.removeEventListener('mousemove', onResizeMove);
-    document.removeEventListener('mouseup', stopResize);
-    document.body.style.userSelect = '';
-    document.body.style.cursor = '';
+  // A click on a file opens its change in VS Code's diff editor (Rider-style);
+  // the Changes tab is just the file list.
+  function openCommittedFileDiff(path: string) {
+    if (commit) {
+      vscode.postMessage({ type: 'openDiff', payload: { file: path, commitHash: commit.hash } });
+    } else if (uiStore.comparing && uiStore.compareRef1 && uiStore.compareRef2) {
+      vscode.postMessage({ type: 'openDiff', payload: { file: path, ref1: uiStore.compareRef1, ref2: uiStore.compareRef2 } });
+    } else if (uiStore.comparing && uiStore.compareRef1) {
+      vscode.postMessage({ type: 'openDiff', payload: { file: path, ref1: uiStore.compareRef1, ref2: 'working' } });
+    } else {
+      vscode.postMessage({ type: 'openDiff', payload: { file: path } });
+    }
   }
 
   onDestroy(() => {
-    document.removeEventListener('mousemove', onResizeMove);
-    document.removeEventListener('mouseup', stopResize);
-    document.body.style.userSelect = '';
-    document.body.style.cursor = '';
     // A hover-preview timer may still be pending when the panel closes; without
     // this it fires post-unmount and posts a now-pointless getCommitData.
     if (previewTimeout) clearTimeout(previewTimeout);
@@ -287,15 +205,6 @@
       sections = [];
       selectedFile = null;
       selectedPatchFiles = new Set();
-    }
-  });
-
-  $effect(() => {
-    if (selectedFile && activeHash && activeHash !== 'UNCOMMITTED') {
-      // Check if we already have the diff
-      if (!diffs.some(d => d.file === selectedFile)) {
-         vscode.postMessage({ type: 'getFileDiff', payload: { hash: activeHash, file: selectedFile } });
-      }
     }
   });
 
@@ -787,7 +696,7 @@
   <!-- Changes tab -->
   {:else if activeTab === 'changes'}
     <div class="changes-tab-content">
-      <div class="files-panel" style="width: {filesPanelWidth}px">
+      <div class="files-panel">
         <div class="files-list">
           {#if activeHash === 'UNCOMMITTED' && uncommittedFiles}
             {#snippet renderUncommittedTree(nodes: FileTreeNode[], depth: number, staged: boolean)}
@@ -799,15 +708,7 @@
                     class:context-active={contextMenuRowKey === `${staged ? 'staged' : 'unstaged'}:${node.path}`}
                     style="padding-left: {8 + depth * 16 + 18}px;"
                     onclick={() => {
-                      const key = `${staged ? 'staged' : 'unstaged'}:${node.path}`;
-                      selectedFile = selectedFile === key ? null : key;
-                      // Nested repos can't be diffed from the parent — skip the fetch
-                      // and let the UI render the dedicated hint pane instead.
-                      if (selectedFile && node.status !== 'N' && !uncommittedDiffCache.has(key)) {
-                        vscode.postMessage({ type: 'getUncommittedFileDiff', payload: { file: node.path, staged } });
-                      }
-                    }}
-                    ondblclick={() => {
+                      selectedFile = `${staged ? 'staged' : 'unstaged'}:${node.path}`;
                       // Open the change in the editor: staged → HEAD↔index, unstaged → index↔working.
                       // Nested repos ('N') can't be diffed from the parent — skip them. New/added files
                       // are handled backend-side (diffed against the empty tree when a ref lacks them).
@@ -907,27 +808,11 @@
                       selectedPatchFiles = next;
                       return;
                     }
-                    // Plain click: select just this file (toggle off if it's the sole selection).
-                    if (selectedFile === node.path && selectedPatchFiles.size <= 1) {
-                      selectedFile = null;
-                      selectedPatchFiles = new Set();
-                    } else {
-                      selectedFile = node.path;
-                      selectedPatchFiles = new Set([node.path]);
-                    }
+                    // Plain click: select just this file and open its diff in the editor.
+                    selectedFile = node.path;
+                    selectedPatchFiles = new Set([node.path]);
+                    openCommittedFileDiff(node.path);
                   }}
-                  ondblclick={() => {
-                    if (commit) {
-                      vscode.postMessage({ type: 'openDiff', payload: { file: node.path, commitHash: commit.hash } });
-                    } else if (uiStore.comparing && uiStore.compareRef1 && uiStore.compareRef2) {
-                      vscode.postMessage({ type: 'openDiff', payload: { file: node.path, ref1: uiStore.compareRef1, ref2: uiStore.compareRef2 } });
-                    } else if (uiStore.comparing && uiStore.compareRef1) {
-                      vscode.postMessage({ type: 'openDiff', payload: { file: node.path, ref1: uiStore.compareRef1, ref2: 'working' } });
-                    } else {
-                      vscode.postMessage({ type: 'openDiff', payload: { file: node.path } });
-                    }
-                  }}
-                  use:tooltip={"Double-click to open in editor"}
                   oncontextmenu={(e) => {
                     e.preventDefault();
                     contextMenuRowKey = node.path;
@@ -1115,42 +1000,9 @@
           {/if}
         </div>
       </div>
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
-        class="resize-handle"
-        class:resizing={isResizing}
-        onmousedown={startResize}
-      ></div>
-
+      <!-- No inline diff pane: clicking a file opens it in VS Code's diff editor. -->
       {#if selectedIsNestedRepo}
-        <div class="diff-wrapper">
-          <div class="diff-panel">
-            <div class="diff-empty">{t('details.nestedRepoHint')}</div>
-          </div>
-        </div>
-      {:else if selectedSections.length > 0}
-        <div class="sections-pane">
-          {#each selectedSections as sec (sec.commit)}
-            <FileDiffView
-              diff={sec.diff}
-              commitHash={sec.commit}
-              stacked
-              heading={sec.subject ? `${sec.shortHash}  ${sec.subject}` : sec.shortHash}
-              onReverse={canReverseInThisView ? handleDiffReverse : undefined}
-              onReverseHunk={canReverseInThisView ? handleHunkReverse : undefined}
-              onReverseLines={canReverseInThisView ? handleLinesReverse : undefined}
-            />
-          {/each}
-        </div>
-      {:else if selectedDiff}
-        <FileDiffView
-          diff={selectedDiff}
-          commitHash={commit?.hash}
-          staged={selectedFile?.startsWith('staged:') ?? false}
-          onReverse={canReverseInThisView ? handleDiffReverse : undefined}
-          onReverseHunk={canReverseInThisView ? handleHunkReverse : undefined}
-          onReverseLines={canReverseInThisView ? handleLinesReverse : undefined}
-        />
+        <div class="nested-repo-hint">{t('details.nestedRepoHint')}</div>
       {/if}
     </div>
 
@@ -1571,29 +1423,24 @@
   .changes-tab-content {
     flex: 1;
     display: flex;
+    flex-direction: column;
     min-height: 0;
     overflow: hidden;
   }
 
   .files-panel {
-    flex-shrink: 0;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
 
-  .resize-handle {
-    width: 4px;
+  .nested-repo-hint {
     flex-shrink: 0;
-    cursor: col-resize;
-    background: transparent;
-    border-right: 1px solid var(--border-color);
-    transition: background 0.15s;
-  }
-
-  .resize-handle:hover,
-  .resize-handle.resizing {
-    background: var(--vscode-sash-hoverBorder, rgba(128, 128, 128, 0.4));
+    padding: 8px 12px;
+    border-top: 1px solid var(--border-color);
+    color: var(--text-secondary);
   }
 
   .files-list {

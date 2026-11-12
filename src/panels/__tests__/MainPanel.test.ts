@@ -37,6 +37,8 @@ const H = vi.hoisted(() => {
     messageHandler: null as null | ((m: unknown) => unknown),
     panel: null as null | { webview: { postMessage: ReturnType<typeof vi.fn> } },
     repos: [] as Array<{ path: string; name: string; type: string }>,
+    // gitGraphPlus.location — most tests drive the editor-tab host.
+    location: 'editor' as 'editor' | 'panel',
   };
 });
 
@@ -70,7 +72,7 @@ vi.mock('vscode', () => {
       showSaveDialog: vi.fn(async () => undefined),
     },
     workspace: {
-      getConfiguration: () => ({ get: (_k: string, d?: unknown) => d }),
+      getConfiguration: () => ({ get: (k: string, d?: unknown) => (k === 'location' ? H.location : d) }),
       getWorkspaceFolder: () => ({ uri: { fsPath: '/repo' } }),
       workspaceFolders: [{ uri: { fsPath: '/repo' } }],
       onDidChangeConfiguration: () => ({ dispose() {} }),
@@ -128,6 +130,7 @@ beforeEach(() => {
   H.git.fileExistsAtRef.mockResolvedValue(true);
   H.git.getEmptyTreeRef.mockResolvedValue('4b825dc642cb6eb9a060e54bf8d69288fbee4904');
   H.repos = [{ path: '/repo', name: 'repo', type: 'root' }];
+  H.location = 'editor';
   (MainPanel as unknown as { currentPanel: unknown }).currentPanel = undefined;
   MainPanel.createOrShow(extUri, '/repo');
 });
@@ -147,6 +150,41 @@ describe('MainPanel construction', () => {
     expect(H.panel).not.toBeNull();
     expect(H.panel!.webview).toBeDefined();
     expect(postedOfType('setLocale').length).toBeGreaterThan(0);
+  });
+});
+
+describe('MainPanel in the bottom panel (location = panel)', () => {
+  it('createOrShow focuses the panel view instead of opening an editor tab', async () => {
+    const vscode = await import('vscode');
+    (MainPanel.currentPanel as unknown as { dispose: () => void }).dispose();
+    vi.clearAllMocks();
+    H.location = 'panel';
+    MainPanel.createOrShow(extUri, '/repo');
+    expect(vscode.window.createWebviewPanel).not.toHaveBeenCalled();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(`${MainPanel.panelViewId}.focus`);
+  });
+
+  it('resolveWebviewView hosts the graph in the view for the pending repo', async () => {
+    (MainPanel.currentPanel as unknown as { dispose: () => void }).dispose();
+    H.location = 'panel';
+    MainPanel.createOrShow(extUri, '/repo');
+    const postMessage = vi.fn();
+    const view = {
+      webview: {
+        options: {},
+        html: '',
+        cspSource: 'vscode-webview:',
+        asWebviewUri: (u: unknown) => u,
+        postMessage,
+        onDidReceiveMessage: () => ({ dispose() {} }),
+      },
+      show: vi.fn(),
+      onDidDispose: () => ({ dispose() {} }),
+    };
+    MainPanel.resolveWebviewView(view as unknown as import('vscode').WebviewView, extUri);
+    expect(MainPanel.currentPanel).toBeDefined();
+    expect(view.webview.html).toContain('<html');
+    expect(postMessage.mock.calls.some(c => c[0].type === 'setLocale')).toBe(true);
   });
 });
 

@@ -403,32 +403,22 @@ describe('CommitDetails — refs rendering', () => {
 });
 
 describe('CommitDetails — file tree & diff', () => {
-  it('clicking a file sets selectedFile and renders the diff toolbar', async () => {
+  it('clicking a file opens its commit diff in the editor', async () => {
     const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
     deliverCommitDiff('h1', [{ path: 'src/a.ts', status: 'M' }]);
-    // switch to changes tab
     const changesTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
       .find(t => /change/i.test(t.textContent ?? ''))!;
     await fireEvent.click(changesTab);
     await waitFor(() => container.querySelector('.file-item'));
+    globalThis.__postedMessages = [];
     await fireEvent.click(container.querySelector<HTMLButtonElement>('.file-item')!);
-    // After clicking, a fileDiff request is posted
-    expect(globalThis.__postedMessages.some(
-      (m) => (m.data as { type?: string }).type === 'getFileDiff'
-    )).toBe(true);
-    // Then deliver the diff and verify the toolbar appears
-    deliverFileDiff('h1', 'src/a.ts', {
-      file: 'src/a.ts',
-      isBinary: false,
-      isImage: false,
-      hunks: [{ header: '', oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: [
-        { type: 'add', content: 'x', newLineNumber: 1 },
-      ] }],
-    });
-    await waitFor(() => container.querySelector('.diff-toolbar'));
+    const req = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'openDiff');
+    expect((req!.data as { payload: unknown }).payload).toMatchObject({ file: 'src/a.ts', commitHash: 'h1' });
+    // No inline diff is fetched any more.
+    expect(globalThis.__postedMessages.some((m) => (m.data as { type?: string }).type === 'getFileDiff')).toBe(false);
   });
 
-  it('clicking a file twice deselects it', async () => {
+  it('clicking a file again keeps it selected', async () => {
     const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
     deliverCommitDiff('h1', [{ path: 'a.ts', status: 'M' }]);
     const changesTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
@@ -439,23 +429,7 @@ describe('CommitDetails — file tree & diff', () => {
     await fireEvent.click(fileBtn);
     expect(fileBtn.classList.contains('selected')).toBe(true);
     await fireEvent.click(fileBtn);
-    expect(fileBtn.classList.contains('selected')).toBe(false);
-  });
-
-  it('double-clicking a file posts openDiff', async () => {
-    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
-    deliverCommitDiff('h1', [{ path: 'a.ts', status: 'M' }]);
-    const changesTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
-      .find(t => /change/i.test(t.textContent ?? ''))!;
-    await fireEvent.click(changesTab);
-    await waitFor(() => container.querySelector('.file-item'));
-    globalThis.__postedMessages = [];
-    await fireEvent.dblClick(container.querySelector<HTMLButtonElement>('.file-item')!);
-    const req = globalThis.__postedMessages.find(
-      (m) => (m.data as { type?: string }).type === 'openDiff'
-    );
-    expect(req).toBeDefined();
-    expect((req!.data as { payload: { file: string } }).payload.file).toBe('a.ts');
+    expect(fileBtn.classList.contains('selected')).toBe(true);
   });
 
   it('right-clicking a file outlines it (context-active) until the menu closes', async () => {
@@ -490,70 +464,6 @@ describe('CommitDetails — file tree & diff', () => {
     await waitFor(() => container.querySelectorAll('.file-status').length === 3);
     const statuses = Array.from(container.querySelectorAll('.file-status')).map(el => el.textContent?.trim());
     expect(statuses).toEqual(expect.arrayContaining(['A', 'M', 'D']));
-  });
-});
-
-describe('CommitDetails — diff mode toggle', () => {
-  async function setupWithDiff() {
-    const r = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
-    deliverCommitDiff('h1', [{ path: 'a.ts', status: 'M' }]);
-    const changesTab = Array.from(r.container.querySelectorAll<HTMLButtonElement>('.top-tab'))
-      .find(t => /change/i.test(t.textContent ?? ''))!;
-    await fireEvent.click(changesTab);
-    await waitFor(() => r.container.querySelector('.file-item'));
-    await fireEvent.click(r.container.querySelector<HTMLButtonElement>('.file-item')!);
-    deliverFileDiff('h1', 'a.ts', {
-      file: 'a.ts', isBinary: false, isImage: false,
-      hunks: [{ header: '', oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: [
-        { type: 'context', content: 'ctx', oldLineNumber: 1, newLineNumber: 1 },
-        { type: 'delete', content: 'old', oldLineNumber: 2 },
-        { type: 'add', content: 'new', newLineNumber: 2 },
-      ] }],
-    });
-    await waitFor(() => r.container.querySelector('.diff-toolbar'));
-    return r;
-  }
-
-  it('default mode is inline', async () => {
-    const { container } = await setupWithDiff();
-    const btns = container.querySelectorAll<HTMLButtonElement>('.diff-mode-toggle button');
-    expect(btns[0].classList.contains('active')).toBe(true);
-    expect(container.querySelector('.diff-content')).not.toBeNull();
-  });
-
-  it('clicking side-by-side renders the sbs pane', async () => {
-    const { container } = await setupWithDiff();
-    const btns = container.querySelectorAll<HTMLButtonElement>('.diff-mode-toggle button');
-    await fireEvent.click(btns[1]);
-    expect(btns[1].classList.contains('active')).toBe(true);
-    expect(container.querySelector('.diff-sbs')).not.toBeNull();
-  });
-
-  it('binary non-image renders the binary placeholder', async () => {
-    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
-    deliverCommitDiff('h1', [{ path: 'data.bin', status: 'M' }]);
-    const changesTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
-      .find(t => /change/i.test(t.textContent ?? ''))!;
-    await fireEvent.click(changesTab);
-    await waitFor(() => container.querySelector('.file-item'));
-    await fireEvent.click(container.querySelector<HTMLButtonElement>('.file-item')!);
-    deliverFileDiff('h1', 'data.bin', { file: 'data.bin', isBinary: true, isImage: false, hunks: [] });
-    await waitFor(() => container.querySelector('.diff-empty'));
-  });
-
-  it('binary image renders the ImageDiff component (mode toolbar)', async () => {
-    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
-    deliverCommitDiff('h1', [{ path: 'logo.png', status: 'M' }]);
-    const changesTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
-      .find(t => /change/i.test(t.textContent ?? ''))!;
-    await fireEvent.click(changesTab);
-    await waitFor(() => container.querySelector('.file-item'));
-    await fireEvent.click(container.querySelector<HTMLButtonElement>('.file-item')!);
-    deliverFileDiff('h1', 'logo.png', { file: 'logo.png', isBinary: true, isImage: true, hunks: [] });
-    await waitFor(() => {
-      // ImageDiff has its own toolbar with Side by Side / Swipe / Onion Skin
-      expect(container.querySelector('.image-diff')).not.toBeNull();
-    });
   });
 });
 
@@ -613,10 +523,12 @@ describe('CommitDetails — uncommitted (staged/unstaged)', () => {
       .find(t => /unstaged/i.test(t.textContent ?? ''))!;
     await fireEvent.click(unstagedTab);
     await waitFor(() => container.querySelector('.file-item'));
+    globalThis.__postedMessages = [];
     await fireEvent.click(container.querySelector<HTMLButtonElement>('.file-item')!);
     await waitFor(() => {
-      expect(container.querySelector('.diff-empty')).not.toBeNull();
+      expect(container.querySelector('.nested-repo-hint')).not.toBeNull();
     });
+    expect(globalThis.__postedMessages.some((m) => (m.data as { type?: string }).type === 'openDiff')).toBe(false);
   });
 
   it('does NOT request file diff when clicking a nested-repo (status N) file', async () => {
@@ -633,7 +545,7 @@ describe('CommitDetails — uncommitted (staged/unstaged)', () => {
     )).toBe(false);
   });
 
-  it('double-clicking an unstaged file opens its working-tree diff', async () => {
+  it('clicking an unstaged file opens its working-tree diff', async () => {
     const { container } = render(CommitDetails, { commit: commit({ hash: 'UNCOMMITTED' }) });
     deliverUncommitted([], [{ path: 'a.ts', status: 'M' }]);
     const unstagedTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
@@ -641,18 +553,18 @@ describe('CommitDetails — uncommitted (staged/unstaged)', () => {
     await fireEvent.click(unstagedTab);
     await waitFor(() => container.querySelector('.file-item'));
     globalThis.__postedMessages = [];
-    await fireEvent.dblClick(container.querySelector<HTMLButtonElement>('.file-item')!);
+    await fireEvent.click(container.querySelector<HTMLButtonElement>('.file-item')!);
     const msg = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'openDiff');
     expect(msg).toBeDefined();
     expect((msg!.data as { payload: unknown }).payload).toMatchObject({ file: 'a.ts', staged: false });
   });
 
-  it('double-clicking a staged file opens its staged diff', async () => {
+  it('clicking a staged file opens its staged diff', async () => {
     const { container } = render(CommitDetails, { commit: commit({ hash: 'UNCOMMITTED' }) });
     deliverUncommitted([{ path: 'a.ts', status: 'M' }], []);
     await waitFor(() => container.querySelector('.file-item'));
     globalThis.__postedMessages = [];
-    await fireEvent.dblClick(container.querySelector<HTMLButtonElement>('.file-item')!);
+    await fireEvent.click(container.querySelector<HTMLButtonElement>('.file-item')!);
     const msg = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'openDiff');
     expect(msg).toBeDefined();
     expect((msg!.data as { payload: unknown }).payload).toMatchObject({ file: 'a.ts', staged: true });
@@ -798,54 +710,6 @@ describe('CommitDetails — hover preview cache & navigate', () => {
     await waitFor(() => {
       expect(container.querySelector('.commit-hover-card')).toBeNull();
     });
-  });
-});
-
-describe('CommitDetails — multi-commit sections (3+ mode)', () => {
-  it('renders per-commit sections for a file in 3+ multi-select mode', async () => {
-    uiStore.comparing = true;
-    uiStore.selectedCommitHashes = ['c3', 'c2', 'c1'];
-    const { findByText, getByText } = render(CommitDetails);
-    window.dispatchEvent(new MessageEvent('message', { data: {
-      type: 'multiCommitSectionsData',
-      payload: {
-        files: [{ path: 'a.txt', status: 'M' }],
-        sections: [
-          { file: 'a.txt', commit: 'c3aaaaaaaa', diff: { file: 'a.txt', hunks: [], isBinary: false, isImage: false } },
-          { file: 'a.txt', commit: 'c1bbbbbbbb', diff: { file: 'a.txt', hunks: [], isBinary: false, isImage: false } },
-        ],
-      },
-    }}));
-    const fileEl = await findByText('a.txt');
-    await fireEvent.click(fileEl.closest('button')!);
-    // two section headers with short hashes
-    await waitFor(() => {
-      expect(getByText(/c3aaaaa/)).toBeTruthy();
-      expect(getByText(/c1bbbbb/)).toBeTruthy();
-    });
-  });
-});
-
-describe('CommitDetails — resize handle', () => {
-  it('mousedown on resize handle starts a drag, mousemove updates width, mouseup stops', async () => {
-    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
-    deliverCommitDiff('h1', [{ path: 'a.ts', status: 'M' }]);
-    const changesTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
-      .find(t => /change/i.test(t.textContent ?? ''))!;
-    await fireEvent.click(changesTab);
-    await waitFor(() => container.querySelector('.resize-handle'));
-    const handle = container.querySelector<HTMLDivElement>('.resize-handle')!;
-    const filesPanel = container.querySelector<HTMLDivElement>('.files-panel')!;
-    const startWidth = parseInt(filesPanel.style.width);
-    await fireEvent.mouseDown(handle, { clientX: 200 });
-    await fireEvent.mouseMove(document, { clientX: 280 });
-    const after = parseInt(filesPanel.style.width);
-    expect(after).toBeGreaterThan(startWidth);
-    await fireEvent.mouseUp(document);
-    // After mouseup, further mousemove should not change width
-    const settled = parseInt(filesPanel.style.width);
-    await fireEvent.mouseMove(document, { clientX: 500 });
-    expect(parseInt(filesPanel.style.width)).toBe(settled);
   });
 });
 
@@ -1232,33 +1096,6 @@ describe('CommitDetails — uncommitted file context menu actions', () => {
   });
 });
 
-describe('CommitDetails — side-by-side scroll sync', () => {
-  it('scrolling left pane syncs right pane scrollTop', async () => {
-    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
-    deliverCommitDiff('h1', [{ path: 'a.ts', status: 'M' }]);
-    const changesTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
-      .find(t => /change/i.test(t.textContent ?? ''))!;
-    await fireEvent.click(changesTab);
-    await waitFor(() => container.querySelector('.file-item'));
-    await fireEvent.click(container.querySelector<HTMLButtonElement>('.file-item')!);
-    deliverFileDiff('h1', 'a.ts', {
-      file: 'a.ts', isBinary: false, isImage: false,
-      hunks: [{ header: '', oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: [
-        { type: 'context', content: 'ctx', oldLineNumber: 1, newLineNumber: 1 },
-      ] }],
-    });
-    await waitFor(() => container.querySelector('.diff-toolbar'));
-    const modeBtns = container.querySelectorAll<HTMLButtonElement>('.diff-mode-toggle button');
-    await fireEvent.click(modeBtns[1]); // side-by-side
-    await waitFor(() => container.querySelector('.sbs-pane'));
-    const panes = container.querySelectorAll<HTMLDivElement>('.sbs-pane');
-    expect(panes.length).toBe(2);
-    panes[0].scrollTop = 75;
-    await fireEvent.scroll(panes[0]);
-    expect(panes[1].scrollTop).toBe(75);
-  });
-});
-
 describe('CommitDetails — fullRefresh while UNCOMMITTED', () => {
   it('re-requests uncommitted diff and any selected-file diff', async () => {
     render(CommitDetails, { commit: commit({ hash: 'UNCOMMITTED' }) });
@@ -1273,54 +1110,6 @@ describe('CommitDetails — fullRefresh while UNCOMMITTED', () => {
         (m) => (m.data as { type?: string }).type === 'getUncommittedDiff'
       )).toBe(true);
     });
-  });
-});
-
-describe('CommitDetails — large diff render cap', () => {
-  const MAX_RENDER_LINES = 3000;
-
-  function bigDiff(file: string, lineCount: number): DiffData {
-    const lines = Array.from({ length: lineCount }, (_, i) => ({
-      type: 'add' as const, content: `line ${i}`, newLineNumber: i + 1,
-    }));
-    return {
-      file, isBinary: false, isImage: false,
-      hunks: [{ header: '', oldStart: 1, oldLines: 0, newStart: 1, newLines: lineCount, lines }],
-    };
-  }
-
-  async function selectFileWithDiff(diff: DiffData) {
-    const r = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
-    deliverCommitDiff('h1', [{ path: diff.file, status: 'M' }]);
-    const changesTab = Array.from(r.container.querySelectorAll<HTMLButtonElement>('.top-tab'))
-      .find(t => /change/i.test(t.textContent ?? ''))!;
-    await fireEvent.click(changesTab);
-    await waitFor(() => r.container.querySelector('.file-item'));
-    await fireEvent.click(r.container.querySelector<HTMLButtonElement>('.file-item')!);
-    deliverFileDiff('h1', diff.file, diff);
-    await waitFor(() => r.container.querySelector('.diff-toolbar'));
-    return r;
-  }
-
-  it('renders all lines and no banner when under the cap', async () => {
-    const { container } = await selectFileWithDiff(bigDiff('small.ts', 100));
-    await waitFor(() => container.querySelectorAll('.diff-content .diff-line').length === 100);
-    expect(container.querySelector('.diff-truncated-banner')).toBeNull();
-  });
-
-  it('caps rendered lines and shows the banner when over the cap', async () => {
-    const { container } = await selectFileWithDiff(bigDiff('huge.ts', MAX_RENDER_LINES + 500));
-    await waitFor(() => container.querySelector('.diff-truncated-banner'));
-    expect(container.querySelectorAll('.diff-content .diff-line').length).toBe(MAX_RENDER_LINES);
-  });
-
-  it('renders every line after clicking "show full diff"', async () => {
-    const total = MAX_RENDER_LINES + 500;
-    const { container } = await selectFileWithDiff(bigDiff('huge.ts', total));
-    await waitFor(() => container.querySelector('.diff-truncated-banner'));
-    await fireEvent.click(container.querySelector<HTMLButtonElement>('.diff-truncated-banner button')!);
-    await waitFor(() => container.querySelectorAll('.diff-content .diff-line').length === total);
-    expect(container.querySelector('.diff-truncated-banner')).toBeNull();
   });
 });
 
@@ -1361,103 +1150,5 @@ describe('CommitDetails — markdown toggle', () => {
     expect(container.querySelector('.message-view-toggle')).toBeNull();
     expect(queryByText('Markdown')).toBeNull();
     expect(container.querySelector('.message-subject')?.textContent).toContain('Fix crash on startup');
-  });
-});
-
-describe('CommitDetails — reverse changes (committed view)', () => {
-  // A small modified-file diff: context (idx 0), delete (idx 1), add (idx 2).
-  // FileDiffView renders one .diff-line per entry; gutters share those indices.
-  function reversibleDiff(): DiffData {
-    return {
-      file: 'src/a.ts', isBinary: false, isImage: false,
-      hunks: [{ header: '', oldStart: 1, oldLines: 2, newStart: 1, newLines: 2, lines: [
-        { type: 'context', content: 'ctx', oldLineNumber: 1, newLineNumber: 1 },
-        { type: 'delete', content: 'old', oldLineNumber: 2 },
-        { type: 'add', content: 'new', newLineNumber: 2 },
-      ] }],
-    };
-  }
-
-  // Mount into the committed single-file view (canReverseInThisView === true) and
-  // render the embedded FileDiffView so its reverse affordances are wired to the
-  // CommitDetails handlers under test.
-  async function setupReversible() {
-    const r = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
-    deliverCommitDiff('h1', [{ path: 'src/a.ts', status: 'M' }]);
-    const changesTab = Array.from(r.container.querySelectorAll<HTMLButtonElement>('.top-tab'))
-      .find(t => /change/i.test(t.textContent ?? ''))!;
-    await fireEvent.click(changesTab);
-    await waitFor(() => r.container.querySelector('.file-item'));
-    await fireEvent.click(r.container.querySelector<HTMLButtonElement>('.file-item')!);
-    deliverFileDiff('h1', 'src/a.ts', reversibleDiff());
-    await waitFor(() => r.container.querySelector('.diff-content .diff-line'));
-    globalThis.__postedMessages = [];
-    return r;
-  }
-
-  function rightClick(el: Element) {
-    el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 20 }));
-  }
-
-  function lastReverse() {
-    return globalThis.__postedMessages
-      .map(m => m.data as { type?: string; payload?: { commit: string; file: string; hunkIndex?: number; lineIndices?: number[] } })
-      .filter(m => m.type === 'reverseCommitChanges')
-      .pop();
-  }
-
-  it('per-hunk reverse button posts reverseCommitChanges for the whole hunk', async () => {
-    const { container } = await setupReversible();
-    const btn = container.querySelector<HTMLButtonElement>('.hunk-hunk-btn');
-    expect(btn).not.toBeNull();
-    await fireEvent.click(btn!);
-    const msg = lastReverse();
-    expect(msg).toBeDefined();
-    expect(msg!.payload).toMatchObject({ commit: 'h1', file: 'src/a.ts', hunkIndex: 0 });
-    expect(msg!.payload!.lineIndices).toBeUndefined();
-  });
-
-  it('right-click → "Reverse Hunk" menu item reverses the whole hunk', async () => {
-    const { container } = await setupReversible();
-    rightClick(container.querySelectorAll('.diff-content .diff-line')[1]);
-    await waitFor(() => container.querySelector('.context-menu'));
-    const item = Array.from(container.querySelectorAll<HTMLButtonElement>('.context-menu .menu-item'))
-      .find(b => b.textContent?.trim() === 'Reverse Hunk')!;
-    expect(item).toBeDefined();
-    await fireEvent.click(item);
-    const msg = lastReverse();
-    expect(msg!.payload).toMatchObject({ commit: 'h1', file: 'src/a.ts', hunkIndex: 0 });
-    expect(msg!.payload!.lineIndices).toBeUndefined();
-    // The menu closes after the action.
-    await waitFor(() => expect(container.querySelector('.context-menu')).toBeNull());
-  });
-
-  it('selected-lines reverse button reverses just the dragged changed lines', async () => {
-    const { container } = await setupReversible();
-    const g = container.querySelectorAll('.diff-content .diff-line .line-gutter');
-    await fireEvent.mouseDown(g[1]);
-    await fireEvent.mouseEnter(g[2]);
-    await fireEvent.mouseUp(window);
-    const btn = container.querySelector<HTMLButtonElement>('.hunk-lines-btn');
-    expect(btn).not.toBeNull();
-    await fireEvent.click(btn!);
-    const msg = lastReverse();
-    expect(msg!.payload).toMatchObject({ commit: 'h1', file: 'src/a.ts', hunkIndex: 0, lineIndices: [1, 2] });
-  });
-
-  it('right-click on a selection → "Reverse Selected Lines" reverses those lines', async () => {
-    const { container } = await setupReversible();
-    const g = container.querySelectorAll('.diff-content .diff-line .line-gutter');
-    await fireEvent.mouseDown(g[1]);
-    await fireEvent.mouseEnter(g[2]);
-    await fireEvent.mouseUp(window);
-    rightClick(container.querySelectorAll('.diff-content .diff-line')[2]);
-    await waitFor(() => container.querySelector('.context-menu'));
-    const item = Array.from(container.querySelectorAll<HTMLButtonElement>('.context-menu .menu-item'))
-      .find(b => /Reverse Selected Lines/.test(b.textContent ?? ''))!;
-    expect(item).toBeDefined();
-    await fireEvent.click(item);
-    const msg = lastReverse();
-    expect(msg!.payload).toMatchObject({ commit: 'h1', file: 'src/a.ts', hunkIndex: 0, lineIndices: [1, 2] });
   });
 });

@@ -1074,13 +1074,13 @@ describe('App — bottom panel resize handle', () => {
       subject: 'fix', body: '', parents: [], refs: [],
     }];
     const { container } = render(App);
-    await waitFor(() => container.querySelector('.resize-handle-h'));
-    const handle = container.querySelector<HTMLDivElement>('.resize-handle-h')!;
-    const startHeight = uiStore.bottomPanelHeight;
-    await fireEvent.mouseDown(handle, { clientY: 500 });
-    // Move up → height increases (deltaY negative from window.innerHeight - clientY)
-    await fireEvent.mouseMove(window, { clientY: 400 });
-    expect(uiStore.bottomPanelHeight).not.toBe(startHeight);
+    await waitFor(() => container.querySelector('.resize-handle-v'));
+    const handle = container.querySelector<HTMLDivElement>('.resize-handle-v')!;
+    const startWidth = uiStore.detailsPanelWidth;
+    await fireEvent.mouseDown(handle, { clientX: 500 });
+    // Move left → the details panel on the right gets wider
+    await fireEvent.mouseMove(window, { clientX: 400 });
+    expect(uiStore.detailsPanelWidth).not.toBe(startWidth);
     await fireEvent.mouseUp(window);
   });
 });

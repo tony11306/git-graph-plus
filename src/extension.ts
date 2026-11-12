@@ -39,6 +39,16 @@ export function activate(context: vscode.ExtensionContext) {
   // the same avatars instead of re-fetching from gravatar.com (issue #38).
   MainPanel.setAvatarCacheDir(vscode.Uri.joinPath(context.globalStorageUri, 'avatars').fsPath);
 
+  // Graph as a tab in the bottom panel (next to Terminal / Problems). Only
+  // visible when `gitGraphPlus.location` is "panel" (see the view's `when`).
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      MainPanel.panelViewId,
+      { resolveWebviewView: (view) => MainPanel.resolveWebviewView(view, context.extensionUri) },
+      { webviewOptions: { retainContextWhenHidden: true } },
+    ),
+  );
+
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (!workspaceFolder) {
     context.subscriptions.push(

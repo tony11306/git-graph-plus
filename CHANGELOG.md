@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased (fork)
+
+### New Features
+- **Graph in the Bottom Panel** - Git Graph+ now opens as a tab in the bottom panel, next to Terminal and Problems. The new `gitGraphPlus.location` setting (`panel` / `editor`) switches back to the editor tab; reload the window after changing it.
+- **Side-by-Side Layout** - Commit details sit to the right of the graph instead of below it, so the view stays usable in a short panel. Drag the divider to resize (20–70% of the width).
+- **Click to Open Diffs** - A single click on a changed file opens its diff in VS Code's diff editor, reusing the preview tab and keeping focus in the graph so you can click through files.
+- **Combined Changes for Two Commits** - Selecting two commits now shows their combined changes, the same as selecting three or more, instead of the diff between the two.
+
+### Removed
+- **Inline Diff Pane** - The Changes tab now shows only the file tree; the inline/side-by-side diff pane is gone. This also removes per-hunk and selected-line reverse, copy-lines, image swipe/onion-skin comparison, and the large-diff render cap. Reverse File (right-click a file) is still available.
+
 ## 0.7.3 (2026-06-30)
 
 ### Bug Fixes

@@ -51,7 +51,7 @@ npm run package            # vsce package → .vsix file
 - **`git/git-binary.ts`** — Holds the resolved path to the `git` executable (module-level, defaults to `'git'` on PATH). `extension.ts` resolves VS Code's `git.path` setting at activation and calls `setGitBinaryPath` so all spawn sites pick it up (matters on Windows portable/MSYS2 installs).
 - **`git/vscode-git-bridge.ts`** — Bridges to the built-in `vscode.git` extension API (only the bits we use) to delegate credential auth on fetch/push.
 - **`git/types.ts`** — Shared TypeScript types for git data structures.
-- **`panels/MainPanel.ts`** — VS Code WebviewPanel host. Routes messages between the webview and GitService.
+- **`panels/MainPanel.ts`** — Webview host. Routes messages between the webview and GitService. It talks to its host through a small `PanelHost` adapter, so the graph can live either in a bottom-panel `WebviewView` (`gitGraphPlus.panelGraph`, registered in `extension.ts`) or an editor-tab `WebviewPanel`, chosen by the `gitGraphPlus.location` setting.
 - **`utils/message-bus.ts`** — Typed message definitions for Extension ↔ Webview communication (discriminated union types).
 - **`services/file-watcher.ts`** — Watches `.git/` directory for changes and triggers auto-refresh (`file-watcher-helpers.ts` resolves git dirs / classifies paths).
 - **`services/repo-discovery.ts`** — Discovers git repos and submodules in the workspace.
@@ -62,9 +62,9 @@ npm run package            # vsce package → .vsix file
 - **Svelte 5** (runes) with Vite, outputs to `webview-ui/dist/`.
 - **`src/App.svelte`** — Root component; routes between Graph, Reflog, and Stats views.
 - **`src/components/graph/`** — CommitGraph, CommitNode, BranchLine — canvas-based graph rendering.
-- **`src/components/commit/`** — CommitDetails panel with diff viewer (uses Shiki for syntax highlighting).
+- **`src/components/commit/`** — CommitDetails panel (commit info + changed-file tree). Clicking a file posts `openDiff` so the diff opens in VS Code's diff editor; there is no inline diff pane. `FileDiffView.svelte` (Shiki-highlighted inline diff) is currently unused.
 - **`src/components/modals/`** — Modal dialogs for git operations (create branch, merge, rebase, etc.).
-- **`src/components/layout/`** — Toolbar and BottomPanel layout components.
+- **`src/components/layout/`** — Toolbar and BottomPanel layout components. Despite its name, `BottomPanel` (commit details) is rendered to the right of the graph in `App.svelte` (`.graph-split`), sized by `uiStore.detailsPanelWidth`.
 - **`src/components/common/`** — Shared UI: context menus, search bar, image diff, stats view, bisect banner.
 - **`src/components/rebase/`** — Interactive rebase UI with drag-to-reorder.
 - **`src/lib/stores/`** — Svelte stores for shared state management.
@@ -93,5 +93,6 @@ All communication is via `postMessage` / `onDidReceiveMessage`. Message types ar
 - Tests use **Vitest**, split into two projects in `vitest.config.mts`:
   - `backend` — extension-host code (`src/**/*.test.ts`), node env, runs against the **real `git` CLI**. Integration tests in `src/git/__tests__/integration/` spawn real git/git-flow/git-lfs and use a 30s timeout.
   - `webview` — Svelte components/stores (`webview-ui/src/**/*.test.ts`), happy-dom env.
+  - On Windows, the integration tests fail (the helpers build `git` commands with POSIX single quotes for `execSync`), and a few unit tests that expect `/`-separated paths (`worktree-path`, `revealInExplorer`, `copyFilePath`, `addWorktree`) fail too. These are environment issues, not regressions.
   - `npm test` runs both. Coverage is uploaded to Codecov; vscode-bound modules (`extension.ts`, `panels/`, canvas/shiki webview code) are excluded from the % — see the comments in `vitest.config.mts`.
 - Staging, committing, and inline blame are intentionally delegated to VS Code's built-in Source Control; Git Graph+ focuses on everything else.

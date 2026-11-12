@@ -1287,17 +1287,12 @@
     lastCompareKey = key;
     uiStore.comparing = true;
     uiStore.selectedCommitHash = null;
-    if (ordered.length === 2) {
-      const ref2 = ordered[0];                 // newer
-      const ref1 = ordered[1];                 // older
-      uiStore.compareRef1 = ref1; uiStore.compareRef2 = ref2;
-      vscode.postMessage({ type: 'compareCommits', payload: { ref1, ref2 } });
-    } else {
-      const head = ordered[0];
-      const oldest = ordered[ordered.length - 1];
-      uiStore.compareRef1 = `${oldest}^`; uiStore.compareRef2 = head;
-      vscode.postMessage({ type: 'getMultiCommitSections', payload: { hashes: ordered } });
-    }
+    // Any multi-selection (2 or more) shows the combined changes of the selected
+    // commits, not the diff between two of them.
+    const head = ordered[0];
+    const oldest = ordered[ordered.length - 1];
+    uiStore.compareRef1 = `${oldest}^`; uiStore.compareRef2 = head;
+    vscode.postMessage({ type: 'getMultiCommitSections', payload: { hashes: ordered } });
   });
 
   function handleGraphNavKey(e: KeyboardEvent) {

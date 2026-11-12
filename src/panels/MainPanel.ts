@@ -24,9 +24,33 @@ import {
 import { SequenceGuard } from '../utils/sequence-guard';
 import { resolveDefaultWorktreePath } from '../utils/worktree-path';
 
+/**
+ * The minimal surface MainPanel needs from whatever hosts its webview. Both an
+ * editor-tab WebviewPanel and a bottom-panel WebviewView are adapted to this,
+ * so the rest of MainPanel doesn't care where the graph lives.
+ */
+interface PanelHost {
+  readonly webview: vscode.Webview;
+  reveal(preserveFocus?: boolean): void;
+  readonly onDidDispose: vscode.Event<void>;
+  dispose(): void;
+}
+
+/** Where the graph opens: an editor tab, or a view in the bottom panel. */
+export function readGraphLocation(): 'editor' | 'panel' {
+  return vscode.workspace.getConfiguration('gitGraphPlus').get<string>('location', 'panel') === 'editor' ? 'editor' : 'panel';
+}
+
+/** Single-click opens diffs in the shared preview tab and keeps focus in the graph, so you can click through files. */
+const DIFF_SHOW_OPTIONS: vscode.TextDocumentShowOptions = { preview: true, preserveFocus: true };
+
 export class MainPanel {
   public static currentPanel: MainPanel | undefined;
   private static readonly viewType = 'gitGraphPlus';
+  /** Id of the bottom-panel webview view (see package.json `contributes.views`). */
+  public static readonly panelViewId = 'gitGraphPlus.panelGraph';
+  /** Repo requested by createOrShow while the panel view was not yet resolved. */
+  private static pendingRepoPath: string | undefined = undefined;
   private static savedRemoteFilter: string[] | undefined = undefined;
   private static savedBranchFilter: string[] | undefined = undefined;
   private static extraEnv: Record<string, string> | undefined = undefined;
@@ -36,7 +60,7 @@ export class MainPanel {
   private static avatarCacheDir: string | undefined = undefined;
   private static avatarCache: AvatarCache | undefined = undefined;
 
-  private readonly panel: vscode.WebviewPanel;
+  private readonly panel: PanelHost;
   private readonly extensionUri: vscode.Uri;
   private repoPath: string;
   private gitService: GitService;
@@ -186,7 +210,7 @@ export class MainPanel {
   }
 
   private constructor(
-    panel: vscode.WebviewPanel,
+    panel: PanelHost,
     extensionUri: vscode.Uri,
     repoPath: string
   ) {
@@ -270,7 +294,43 @@ export class MainPanel {
     this.sendRepoList();
   }
 
-  public static createOrShow(extensionUri: vscode.Uri, repoPathHint?: string): void {
+  private static webviewOptions(extensionUri: vscode.Uri): vscode.WebviewOptions {
+    return {
+      enableScripts: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(extensionUri, 'webview-ui', 'dist'),
+        vscode.Uri.joinPath(extensionUri, 'node_modules', '@vscode', 'codicons', 'dist'),
+      ],
+    };
+  }
+
+  /**
+   * Called by the bottom-panel WebviewViewProvider when VS Code shows the view.
+   * The view can be resolved again after it was closed, so any previous
+   * instance is disposed first.
+   */
+  public static resolveWebviewView(view: vscode.WebviewView, extensionUri: vscode.Uri): void {
+    view.webview.options = MainPanel.webviewOptions(extensionUri);
+    MainPanel.currentPanel?.dispose();
+
+    const repoPath = MainPanel.pendingRepoPath ?? MainPanel.resolveRepoPath();
+    MainPanel.pendingRepoPath = undefined;
+    if (!repoPath) {
+      view.webview.html = '<p style="padding: 8px">Git Graph+: No workspace folder open.</p>';
+      return;
+    }
+
+    const host: PanelHost = {
+      webview: view.webview,
+      reveal: (preserveFocus) => view.show(preserveFocus ?? false),
+      onDidDispose: view.onDidDispose,
+      // The view itself is owned by VS Code; closing it is the user's call.
+      dispose: () => {},
+    };
+    MainPanel.currentPanel = new MainPanel(host, extensionUri, repoPath);
+  }
+
+  private static resolveRepoPath(repoPathHint?: string): string | undefined {
     let repoPath: string | undefined = repoPathHint;
 
     if (!repoPath) {
@@ -288,6 +348,11 @@ export class MainPanel {
     if (!repoPath) {
       repoPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     }
+    return repoPath;
+  }
+
+  public static createOrShow(extensionUri: vscode.Uri, repoPathHint?: string): void {
+    const repoPath = MainPanel.resolveRepoPath(repoPathHint);
 
     if (!repoPath) {
       vscode.window.showWarningMessage('Git Graph+: No workspace folder open.');
@@ -299,7 +364,15 @@ export class MainPanel {
       if (repoPathHint && MainPanel.currentPanel.repoPath !== repoPathHint) {
         MainPanel.currentPanel.switchRepo(repoPathHint);
       }
-      MainPanel.currentPanel.panel.reveal(vscode.ViewColumn.One);
+      MainPanel.currentPanel.panel.reveal();
+      return;
+    }
+
+    if (readGraphLocation() === 'panel') {
+      // Focusing the view makes VS Code call resolveWebviewView, which builds
+      // the MainPanel for the repo stashed here.
+      MainPanel.pendingRepoPath = repoPath;
+      void vscode.commands.executeCommand(`${MainPanel.panelViewId}.focus`);
       return;
     }
 
@@ -307,14 +380,7 @@ export class MainPanel {
       MainPanel.viewType,
       'Git Graph+',
       vscode.ViewColumn.One,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [
-          vscode.Uri.joinPath(extensionUri, 'webview-ui', 'dist'),
-          vscode.Uri.joinPath(extensionUri, 'node_modules', '@vscode', 'codicons', 'dist'),
-        ],
-      }
+      { ...MainPanel.webviewOptions(extensionUri), retainContextWhenHidden: true }
     );
 
     // Set tab icon (light bg → dark icon, dark bg → light icon)
@@ -323,7 +389,13 @@ export class MainPanel {
       dark: vscode.Uri.joinPath(extensionUri, 'resources', 'icon-dark.svg'),
     };
 
-    MainPanel.currentPanel = new MainPanel(panel, extensionUri, repoPath);
+    const host: PanelHost = {
+      webview: panel.webview,
+      reveal: (preserveFocus) => panel.reveal(panel.viewColumn ?? vscode.ViewColumn.One, preserveFocus),
+      onDidDispose: panel.onDidDispose,
+      dispose: () => panel.dispose(),
+    };
+    MainPanel.currentPanel = new MainPanel(host, extensionUri, repoPath);
   }
 
   public async postRefresh(): Promise<void> {
@@ -759,7 +831,7 @@ export class MainPanel {
           // so the modal stays keyboard-interactive (Escape to close, typing in
           // the message). Without this, focus stays in the SCM view.
           if (message.payload?.returnFocus) {
-            this.panel.reveal(this.panel.viewColumn, false);
+            this.panel.reveal(false);
           }
           break;
         }
@@ -1719,17 +1791,17 @@ export class MainPanel {
       const leftUri = await this.toGitDiffUri(fullPath, file, parentRef);
       const rightUri = await this.toGitDiffUri(fullPath, file, commitHash);
       const title = `${file} (${commitHash.substring(0, 7)})`;
-      await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
+      await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title, DIFF_SHOW_OPTIONS);
     } else if (staged) {
       // Staged diff: HEAD vs index.
       const leftUri = await this.toGitDiffUri(fullPath, file, 'HEAD');
       const rightUri = await this.toGitDiffUri(fullPath, file, '');
-      await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, `${file} (Staged)`);
+      await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, `${file} (Staged)`, DIFF_SHOW_OPTIONS);
     } else {
       // Unstaged diff: index vs working tree.
       const leftUri = await this.toGitDiffUri(fullPath, file, '');
       const rightUri = await this.workingTreeDiffUri(fullPath);
-      await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, `${file} (Working Tree)`);
+      await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, `${file} (Working Tree)`, DIFF_SHOW_OPTIONS);
     }
   }
 
@@ -1742,13 +1814,13 @@ export class MainPanel {
       const commitRef = ref1 === 'working' ? ref2 : ref1;
       const commitUri = await this.toGitDiffUri(fullPath, file, commitRef);
       const workingUri = await this.workingTreeDiffUri(fullPath);
-      await vscode.commands.executeCommand('vscode.diff', commitUri, workingUri, `${file} (${commitRef.substring(0, 7)} ↔ Working Tree)`);
+      await vscode.commands.executeCommand('vscode.diff', commitUri, workingUri, `${file} (${commitRef.substring(0, 7)} ↔ Working Tree)`, DIFF_SHOW_OPTIONS);
     } else {
       const leftUri = await this.toGitDiffUri(fullPath, file, ref1);
       const rightUri = await this.toGitDiffUri(fullPath, file, ref2);
       const label1 = ref1.length > 10 ? ref1.substring(0, 7) : ref1;
       const label2 = ref2.length > 10 ? ref2.substring(0, 7) : ref2;
-      await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, `${file} (${label1} ↔ ${label2})`);
+      await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, `${file} (${label1} ↔ ${label2})`, DIFF_SHOW_OPTIONS);
     }
   }
 
